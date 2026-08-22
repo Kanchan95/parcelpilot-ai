@@ -26,6 +26,19 @@ COLLECTION_NAME: str = "parcelpilot_docs"
 TOP_K_RETRIEVAL: int = int(os.getenv("TOP_K_RETRIEVAL", "12"))
 TOP_K_RERANKED: int = int(os.getenv("TOP_K_RERANKED", "5"))
 
+# CORS: allowed frontend origins.
+# In production, set ALLOWED_ORIGINS to your deployed frontend URL.
+# Multiple origins are separated by commas.
+# Defaults cover Vite dev server (5173) and production mode (same port as backend).
+ALLOWED_ORIGINS: list[str] = [
+    o.strip()
+    for o in os.getenv(
+        "ALLOWED_ORIGINS",
+        "http://localhost:5173,http://localhost:8080",
+    ).split(",")
+    if o.strip()
+]
+
 
 def get_snapshot_time() -> str:
     """

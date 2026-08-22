@@ -9,12 +9,17 @@ Key design principles:
   - Confirmation gate: action_executor returns "requires_confirmation" on first call;
     the loop pauses and surfaces this to the caller (UI).
   - Max iteration guard prevents infinite loops.
+  - All API errors are caught and returned as user-friendly AgentResponse messages;
+    raw provider errors never propagate to the HTTP layer.
 """
 
 import json
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 import openai
+
+logger = logging.getLogger(__name__)
 
 import config
 from agent.tools import document_search, structured_lookup, action_executor
@@ -222,10 +227,13 @@ class Orchestrator:
         self.is_internal = is_internal
         self.session_id = session_id
         self.messages: list[dict] = []   # history WITHOUT the system message
+        self._config_error: str | None = None
 
-        # Auto-select provider: Groq → OpenAI → error
+        # Auto-select provider: Groq → OpenAI → deferred error
+        # We defer the error so login succeeds and the first chat message returns
+        # a clean user-facing message instead of a server-level 500.
         if config.GROQ_API_KEY:
-            self.client = openai.OpenAI(
+            self.client: openai.OpenAI | None = openai.OpenAI(
                 api_key=config.GROQ_API_KEY,
                 base_url="https://api.groq.com/openai/v1",
             )
@@ -234,10 +242,27 @@ class Orchestrator:
             self.client = openai.OpenAI(api_key=config.OPENAI_API_KEY)
             self.model = config.OPENAI_MODEL
         else:
-            raise ValueError("No API key found. Set GROQ_API_KEY or OPENAI_API_KEY in .env")
+            self.client = None
+            self.model = ""
+            self._config_error = (
+                "No AI provider API key is configured. "
+                "Set GROQ_API_KEY or OPENAI_API_KEY in .env and restart the server."
+            )
+            logger.error("Orchestrator created with no API key — AI calls will fail gracefully.")
 
     def chat(self, user_message: str) -> AgentResponse:
         """Process one user turn and return the agent response."""
+        # Fail gracefully if no API key was available at startup.
+        if self.client is None:
+            return AgentResponse(
+                text=(
+                    "⚠️ The AI service is not configured. "
+                    "Please contact your administrator."
+                ),
+                tool_calls=[],
+                pending_action=None,
+            )
+
         if user_message:
             self.messages.append({"role": "user", "content": user_message})
 
@@ -250,13 +275,64 @@ class Orchestrator:
                 {"role": "system", "content": _build_system_prompt()}
             ] + self.messages
 
-            response = self.client.chat.completions.create(
-                model=self.model,
-                max_tokens=config.MAX_TOKENS,
-                messages=full_messages,
-                tools=TOOL_DEFINITIONS,
-                tool_choice="auto",
-            )
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    max_tokens=config.MAX_TOKENS,
+                    messages=full_messages,
+                    tools=TOOL_DEFINITIONS,
+                    tool_choice="auto",
+                )
+            except openai.RateLimitError:
+                logger.warning("Groq/OpenAI rate limit hit (429).")
+                return AgentResponse(
+                    text=(
+                        "⚠️ The AI service is temporarily rate-limited. "
+                        "Please wait a moment and try again."
+                    ),
+                    tool_calls=tool_calls_log,
+                    pending_action=pending_action,
+                )
+            except openai.AuthenticationError:
+                logger.error("AI provider authentication failed — check API key.")
+                return AgentResponse(
+                    text=(
+                        "⚠️ The AI service could not be authenticated. "
+                        "Please contact your administrator."
+                    ),
+                    tool_calls=tool_calls_log,
+                    pending_action=pending_action,
+                )
+            except (openai.APIConnectionError, openai.APITimeoutError) as exc:
+                logger.warning("AI provider connection/timeout error: %s", exc)
+                return AgentResponse(
+                    text=(
+                        "⚠️ Could not reach the AI service. "
+                        "Please check your connection and try again."
+                    ),
+                    tool_calls=tool_calls_log,
+                    pending_action=pending_action,
+                )
+            except openai.APIStatusError as exc:
+                logger.error("AI provider API error %s: %s", exc.status_code, exc.message)
+                return AgentResponse(
+                    text=(
+                        "⚠️ The AI service returned an unexpected error. "
+                        "Please try again shortly."
+                    ),
+                    tool_calls=tool_calls_log,
+                    pending_action=pending_action,
+                )
+            except openai.OpenAIError as exc:
+                logger.error("Unexpected OpenAI SDK error: %s", exc)
+                return AgentResponse(
+                    text=(
+                        "⚠️ An unexpected AI service error occurred. "
+                        "Please try again shortly."
+                    ),
+                    tool_calls=tool_calls_log,
+                    pending_action=pending_action,
+                )
 
             choice = response.choices[0]
             msg = choice.message
@@ -288,7 +364,26 @@ class Orchestrator:
             # Tool calls requested
             if choice.finish_reason == "tool_calls" and msg.tool_calls:
                 for tc in msg.tool_calls:
-                    inputs = json.loads(tc.function.arguments)
+                    try:
+                        inputs = json.loads(tc.function.arguments)
+                    except json.JSONDecodeError:
+                        # Malformed arguments from LLM — feed error back so it can recover
+                        logger.warning("Malformed tool arguments for %s: %s", tc.function.name, tc.function.arguments)
+                        inputs = {}
+                        raw_output: dict = {"error": "Malformed tool arguments — could not parse JSON."}
+                        tool_calls_log.append(ToolCall(
+                            name=tc.function.name,
+                            tool_use_id=tc.id,
+                            inputs=inputs,
+                            output=raw_output,
+                        ))
+                        self.messages.append({
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "content": json.dumps(raw_output),
+                        })
+                        continue
+
                     raw_output = self._dispatch_tool(tc.function.name, inputs)
 
                     tool_calls_log.append(ToolCall(

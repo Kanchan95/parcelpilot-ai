@@ -4,6 +4,7 @@ Run: python server.py
 """
 import sys
 import json
+import logging
 import uuid
 import sqlite3
 from pathlib import Path
@@ -18,13 +19,22 @@ import uvicorn
 import config
 from agent.orchestrator import Orchestrator
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s — %(message)s",
+)
+logger = logging.getLogger(__name__)
+
 app = FastAPI(title="ParcelPilot AI", docs_url=None, redoc_url=None)
 
+# CORS: configured via ALLOWED_ORIGINS env var (see config.py).
+# Default allows Vite dev server and local production.
+# Set ALLOWED_ORIGINS in .env for deployment.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=config.ALLOWED_ORIGINS,
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 # In-memory sessions (fine for demo)
@@ -50,28 +60,44 @@ def _get_plan(account_id: str) -> str:
         return "Standard"
 
 
-# ── Routes ───────────────────────────────────────────────────────────────────
+def _agent_response_to_dict(response) -> dict:
+    return {
+        "text": response.text,
+        "tool_calls": [
+            {"name": tc.name, "inputs": tc.inputs, "output": tc.output}
+            for tc in response.tool_calls
+        ],
+        "pending_action": response.pending_action,
+    }
 
-_DIST = Path(__file__).parent / "web" / "dist"
 
-# Serve React build in production (after `npm run build` inside web/)
-if _DIST.exists():
-    app.mount("/assets", StaticFiles(directory=_DIST / "assets"), name="assets")
+# ── API routes (must be registered before the SPA catch-all) ─────────────────
 
-    @app.get("/")
-    async def root():
-        return FileResponse(_DIST / "index.html")
-
-    @app.get("/{full_path:path}", include_in_schema=False)
-    async def spa_fallback(full_path: str):
-        file = _DIST / full_path
-        if file.is_file():
-            return FileResponse(file)
-        return FileResponse(_DIST / "index.html")
-else:
-    @app.get("/")
-    async def root():
-        return FileResponse("frontend/index.html")
+@app.get("/api/health")
+async def health():
+    """
+    Lightweight readiness check. Does NOT call the LLM.
+    Verifies DB access and reports configuration status.
+    """
+    result: dict = {
+        "status": "ok",
+        "model": config.GROQ_MODEL,
+        "ai_configured": bool(config.GROQ_API_KEY or config.OPENAI_API_KEY),
+    }
+    try:
+        conn = sqlite3.connect(config.DB_PATH)
+        counts = {
+            "accounts": conn.execute("SELECT COUNT(*) FROM accounts").fetchone()[0],
+            "tickets":  conn.execute("SELECT COUNT(*) FROM tickets").fetchone()[0],
+        }
+        conn.close()
+        result["db"] = "ok"
+        result["db_counts"] = counts
+    except Exception as exc:
+        logger.error("Health check DB error: %s", exc)
+        result["db"] = "error"
+        result["status"] = "degraded"
+    return result
 
 
 @app.get("/api/accounts")
@@ -119,17 +145,18 @@ async def chat(request: Request):
     body = await request.json()
     session = _session(body.get("session_id", ""))
     orch: Orchestrator = session["orchestrator"]
-
-    response = orch.chat(body.get("message", "").strip())
-
-    return {
-        "text": response.text,
-        "tool_calls": [
-            {"name": tc.name, "inputs": tc.inputs, "output": tc.output}
-            for tc in response.tool_calls
-        ],
-        "pending_action": response.pending_action,
-    }
+    try:
+        response = orch.chat(body.get("message", "").strip())
+        return _agent_response_to_dict(response)
+    except Exception as exc:
+        logger.exception("Unexpected error in /api/chat: %s", exc)
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": "service_error",
+                "message": "An unexpected error occurred. Please try again.",
+            },
+        )
 
 
 @app.post("/api/confirm")
@@ -137,20 +164,21 @@ async def confirm(request: Request):
     body = await request.json()
     session = _session(body.get("session_id", ""))
     orch: Orchestrator = session["orchestrator"]
-
-    response = orch.notify_confirmation(
-        action_id=body["action_id"],
-        confirmed=body.get("confirmed", False),
-    )
-
-    return {
-        "text": response.text,
-        "tool_calls": [
-            {"name": tc.name, "inputs": tc.inputs, "output": tc.output}
-            for tc in response.tool_calls
-        ],
-        "pending_action": response.pending_action,
-    }
+    try:
+        response = orch.notify_confirmation(
+            action_id=body["action_id"],
+            confirmed=body.get("confirmed", False),
+        )
+        return _agent_response_to_dict(response)
+    except Exception as exc:
+        logger.exception("Unexpected error in /api/confirm: %s", exc)
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": "service_error",
+                "message": "An unexpected error occurred. Please try again.",
+            },
+        )
 
 
 @app.get("/api/stats")
@@ -178,6 +206,29 @@ async def logout(request: Request):
     body = await request.json()
     SESSIONS.pop(body.get("session_id", ""), None)
     return {"ok": True}
+
+
+# ── Static file serving (SPA catch-all — must come last) ─────────────────────
+
+_DIST = Path(__file__).parent / "web" / "dist"
+
+if _DIST.exists():
+    app.mount("/assets", StaticFiles(directory=_DIST / "assets"), name="assets")
+
+    @app.get("/")
+    async def root():
+        return FileResponse(_DIST / "index.html")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str):
+        file = _DIST / full_path
+        if file.is_file():
+            return FileResponse(file)
+        return FileResponse(_DIST / "index.html")
+else:
+    @app.get("/")
+    async def root():
+        return FileResponse("frontend/index.html")
 
 
 if __name__ == "__main__":

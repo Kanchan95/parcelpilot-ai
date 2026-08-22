@@ -2,6 +2,20 @@ import type { Session, ChatResponse } from './types';
 
 const BASE = '';  // Vite proxies /api → localhost:8080
 
+async function _extractError(r: Response): Promise<string> {
+  try {
+    const data = await r.json();
+    // Prefer our structured error format, then FastAPI's detail field
+    if (typeof data.message === 'string') return data.message;
+    if (typeof data.detail === 'string') return data.detail;
+    // FastAPI validation errors return detail as an array
+    if (Array.isArray(data.detail)) return 'Invalid request. Please try again.';
+  } catch {
+    // Response body was not JSON — fall through to generic message
+  }
+  return `Request failed (HTTP ${r.status}). Please try again.`;
+}
+
 async function post<T>(path: string, body: unknown): Promise<T> {
   const r = await fetch(BASE + path, {
     method: 'POST',
@@ -9,15 +23,16 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   });
   if (!r.ok) {
-    const text = await r.text();
-    throw new Error(text || `HTTP ${r.status}`);
+    throw new Error(await _extractError(r));
   }
   return r.json();
 }
 
 async function get<T>(path: string): Promise<T> {
   const r = await fetch(BASE + path);
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  if (!r.ok) {
+    throw new Error(await _extractError(r));
+  }
   return r.json();
 }
 
