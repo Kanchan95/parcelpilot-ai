@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* { box-sizing: border-box; }
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: #F0F4F9;
+  color: #0F172A;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* Prose styles for assistant markdown */
+.prose p  { margin: 0 0 0.4rem; line-height: 1.65; }
+.prose p:last-child { margin: 0; }
+.prose ul, .prose ol { padding-left: 1.25rem; margin: 0.25rem 0; }
+.prose li { margin-bottom: 0.15rem; }
+.prose strong { font-weight: 600; color: #0F172A; }
+.prose em { font-style: italic; }
+.prose h3 { font-size: 0.9rem; font-weight: 700; margin: 0.5rem 0 0.2rem; color: #1E293B; }
+.prose code { background: #F1F5F9; padding: 1px 5px; border-radius: 4px; font-size: 0.78rem; font-family: 'Courier New', monospace; color: #334155; }
+.prose hr { border: none; border-top: 1px solid #E2E8F0; margin: 0.5rem 0; }
+.prose a { color: #2563EB; text-decoration: underline; }
