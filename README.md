@@ -25,7 +25,9 @@ This project replaces that manual workflow with a **multi-tool AI agent** that:
 
 ## Live Demo
 
-> **GitHub repository URL, hosted app link, and demo video will be added here before final submission.**
+- **GitHub:** https://github.com/Kanchan95/parcelpilot-ai
+- **Hosted App (Try the Agent):** https://parcelpilot-ai-mdbx.onrender.com
+- **Demo Video:** https://youtu.be/RoPsUHLMizs
 
 ---
 
@@ -81,6 +83,13 @@ parcelpilot-ai/
 ├── requirements.txt
 ├── .env.example
 ├── setup.sh                        # One-command setup
+├── ARCHITECTURE.md                 # Architecture decisions and trade-offs
+├── PRODUCT_NOTE.md                 # Product design notes and optional features
+├── AI_TOOL_DISCLOSURE.md           # AI tool usage disclosure
+│
+├── docs/
+│   ├── HLD.md                      # High-Level Design
+│   └── LLD.md                      # Low-Level Design
 │
 ├── data/
 │   ├── documents/                  # 6 assessment PDF documents
@@ -130,7 +139,7 @@ parcelpilot-ai/
 ### Quick Start (automated)
 
 ```bash
-git clone <YOUR_GITHUB_REPO_URL>
+git clone https://github.com/Kanchan95/parcelpilot-ai.git
 cd parcelpilot-ai
 bash setup.sh
 ```
@@ -377,9 +386,9 @@ GET   /api/health                                            → { status, model
 
 | Deliverable | Status |
 |---|---|
-| Public repository with setup instructions | ✅ This repo + `setup.sh` |
-| Hosted application | ⏳ To be added before submission |
-| 5-minute demo video | ⏳ To be added before submission |
+| Public repository with setup instructions | ✅ [github.com/Kanchan95/parcelpilot-ai](https://github.com/Kanchan95/parcelpilot-ai) |
+| Hosted application | ✅ [parcelpilot-ai-mdbx.onrender.com](https://parcelpilot-ai-mdbx.onrender.com) |
+| 5-minute demo video | ✅ [youtu.be/RoPsUHLMizs](https://youtu.be/RoPsUHLMizs) |
 | Architecture note | ✅ [`ARCHITECTURE.md`](ARCHITECTURE.md) |
 | High-Level Design | ✅ [`docs/HLD.md`](docs/HLD.md) |
 | Low-Level Design | ✅ [`docs/LLD.md`](docs/LLD.md) |
