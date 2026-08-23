@@ -4,8 +4,8 @@
 
 ## Agent Design
 
-The system uses a **ReAct (Reason + Act) loop** with Claude's native tool_use API
-rather than a single-pass RAG pipeline.
+The system uses a **ReAct (Reason + Act) loop** with the LLM's tool_use API
+(OpenAI-compatible format, served via Groq) rather than a single-pass RAG pipeline.
 
 **Why ReAct and not simple RAG?**
 The two example queries from the assessment reveal why:
@@ -28,10 +28,10 @@ explicit and auditable — each tool call and its result is logged and shown in 
 ```
 User message → append to history
 While iterations < 10:
-    Claude response = call Claude with tool definitions + message history
-    If stop_reason == "end_turn": return final text
-    If stop_reason == "tool_use":
-        For each tool_use block:
+    response = client.chat.completions.create(tools=..., messages=history)
+    If finish_reason == "stop": return final text
+    If finish_reason == "tool_calls":
+        For each tool_call:
             Execute the tool (with session-scoped access control)
             Append tool_result to history
         Continue loop
@@ -187,8 +187,7 @@ to create an escalation rather than hallucinating.
 Cost: smaller model than OpenAI `text-embedding-3-large` (1536-dim), may miss
 fine-grained semantic distinctions in longer policy paragraphs.
 **Production flip point**: If the document corpus grows beyond ~100 documents or
-precision on policy-specific queries degrades, switch to Voyage AI (Anthropic's
-recommended embedding partner) or OpenAI embeddings.
+precision on policy-specific queries degrades, switch to OpenAI or Voyage AI embeddings.
 
 ### 2. SQLite vs. PostgreSQL
 **Chosen**: SQLite (built-in Python, no server)
@@ -215,7 +214,7 @@ Cost: sessions lost on server restart; cannot scale horizontally.
 **Production flip point**: The first deployment with more than one server instance.
 
 ### 5. ReAct loop vs. LangGraph / LangChain
-**Chosen**: Raw Anthropic SDK tool_use loop (no framework)
+**Chosen**: OpenAI-compatible SDK with Groq endpoint (no framework abstractions)
 **Trade-off**: Full control over every aspect of the loop: iteration count, tool
 dispatch, confirmation gate, message history format. No hidden abstractions.
 Cost: more code to write and maintain; no built-in streaming, memory management,

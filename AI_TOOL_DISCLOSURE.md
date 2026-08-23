@@ -1,32 +1,43 @@
 # AI Tool Usage Disclosure
 
-This document lists all AI tools used in the development of the ParcelPilot AI
+This document lists all AI tools used in the development and runtime of the ParcelPilot AI
 Support System, as required by the CalQuity assessment guidelines.
 
 ---
 
-## Tools Used
+## Runtime AI — Production LLM
 
-### 1. Claude (Anthropic) — Primary LLM
-- **Model used in the product**: `claude-sonnet-4-6` via the Anthropic Python SDK
-- **Role**: Powers the agent's reasoning, tool selection, and response generation
-- **API**: Anthropic Messages API with native `tool_use` (not LangChain)
+### Groq API (OpenAI-compatible endpoint)
+- **Model used in the product**: `openai/gpt-oss-120b` (configurable via `GROQ_MODEL` env var)
+- **Role**: Powers the agent's reasoning, tool selection, and response generation at runtime
+- **API**: OpenAI-compatible Python SDK (`openai` package) pointed at `https://api.groq.com/openai/v1`
+- **Tool calling**: OpenAI tool_use format (`tools=` parameter in `chat.completions.create`)
+- **Key**: `GROQ_API_KEY` in `.env` (gitignored; never committed)
 
-### 2. Claude Code (Anthropic) — Development Assistant
-- **Version**: Claude Sonnet 4.6 (claude-sonnet-4-6)
-- **Role**: Used as an AI pair-programming assistant during development
+---
+
+## Development AI — Pair Programming
+
+### Claude Code (Anthropic)
+- **Version**: Claude Sonnet 4.6 (`claude-sonnet-4-6`)
+- **Role**: Used as an AI pair-programming assistant throughout development
 - **Tasks assisted with**:
-  - Architecting the agent tool design and confirmation gate pattern
+  - Architecting the ReAct agent tool design and confirmation gate pattern
   - Writing and reviewing Python code across all modules
-  - Drafting the HLD/LLD documentation
-  - Generating realistic mock data (documents and Excel data)
+  - Drafting HLD/LLD/ARCHITECTURE documentation
   - Designing the system prompt for the orchestrator
   - Writing integration tests for access control and trust hierarchy
+  - Implementing reliability safeguards (graceful error handling, test isolation)
+  - Phase-by-phase implementation and verification assistance
 
-### 3. SentenceTransformers — Embedding Model
+---
+
+## Embeddings — Local (No External API)
+
+### SentenceTransformers
 - **Model**: `all-MiniLM-L6-v2` (via `sentence-transformers` library)
-- **Role**: Generates 384-dimensional embeddings for document chunks
-- **Note**: Runs locally — no external API call required
+- **Role**: Generates 384-dimensional embeddings for document chunks stored in ChromaDB
+- **Note**: Runs locally — no external API call or additional key required
 
 ---
 
@@ -38,6 +49,8 @@ Support System, as required by the CalQuity assessment guidelines.
   trust ranking) were designed by the developer
 - The source trust hierarchy and conflict detection logic reflect deliberate
   engineering choices about system behaviour under uncertainty
+- The real assessment data (Excel workbook + PDFs) are used as-is; no AI-generated
+  synthetic data is used in the production system
 
 ---
 

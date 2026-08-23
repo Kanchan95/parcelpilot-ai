@@ -106,11 +106,10 @@ export default function LoginPage({ onLogin }: Props) {
             <span className="font-bold text-slate-900">ParcelPilot AI</span>
           </div>
 
-          <h2 className="text-[1.6rem] font-bold tracking-tight text-slate-900 mb-1">Welcome back</h2>
-          <p className="text-[0.85rem] text-slate-500 mb-7">Sign in to access your support dashboard</p>
+          <h2 className="text-[1.6rem] font-bold tracking-tight text-slate-900 mb-5">ParcelPilot AI</h2>
 
           {/* Role toggle */}
-          <p className="text-[0.72rem] font-semibold uppercase tracking-[0.5px] text-slate-400 mb-1.5">Sign in as</p>
+          <p className="text-[0.72rem] font-semibold uppercase tracking-[0.5px] text-slate-400 mb-1.5">Select role</p>
           <div className="flex p-1 rounded-xl mb-5 bg-slate-100 border border-slate-200">
             {(['customer', 'internal'] as const).map(r => (
               <button
@@ -180,7 +179,7 @@ export default function LoginPage({ onLogin }: Props) {
 
           <div className="flex items-center justify-center gap-1.5 mt-5">
             <Shield size={11} className="text-slate-300" />
-            <p className="text-[0.68rem] text-slate-400">Secure · Role-based · Policy-grounded</p>
+            <p className="text-[0.68rem] text-slate-400">Role-based access control · Policy-grounded answers</p>
           </div>
         </div>
       </div>

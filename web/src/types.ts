@@ -67,7 +67,42 @@ export const QUICK_PROMPTS: Record<string, string[]> = {
 };
 
 export const TOOL_META: Record<string, { icon: string; label: string }> = {
-  search_documents: { icon: '🔍', label: 'Doc Search' },
-  lookup_data:      { icon: '📊', label: 'Data Lookup' },
-  execute_action:   { icon: '⚡', label: 'Action' },
+  search_documents: { icon: '📄', label: 'Policy docs checked' },
+  lookup_data:      { icon: '📊', label: 'Account data checked' },
+  execute_action:   { icon: '⚡', label: 'Action prepared' },
+};
+
+// ── Document search output types ──────────────────────────────────────────────
+// These mirror the structure returned by document_search.py SearchResult.to_dict()
+
+export interface DocSearchResult {
+  source: string;
+  source_type: string;
+  is_deprecated: boolean;
+  authority_level: number;
+  content: string;
+  relevance_score: number;
+}
+
+export interface DocSearchConflict {
+  type: string;
+  message: string;
+  trusted_source?: string;
+  deprecated_source?: string;
+  overridden_source?: string;
+}
+
+export interface DocSearchOutput {
+  results: DocSearchResult[];
+  conflicts: DocSearchConflict[];
+  total_results: number;
+}
+
+export const SOURCE_TYPE_LABELS: Record<string, string> = {
+  customer_agreement: 'Customer Agreement',
+  current_policy:     'Current Policy',
+  current_sop:        'Current SOP',
+  product_guide:      'Product Guide',
+  deprecated_policy:  'Deprecated Policy',
+  deprecated_sop:     'Deprecated SOP',
 };

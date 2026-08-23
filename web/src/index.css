@@ -28,3 +28,11 @@ html, body, #root {
 .prose code { background: #F1F5F9; padding: 1px 5px; border-radius: 4px; font-size: 0.78rem; font-family: 'Courier New', monospace; color: #334155; }
 .prose hr { border: none; border-top: 1px solid #E2E8F0; margin: 0.5rem 0; }
 .prose a { color: #2563EB; text-decoration: underline; }
+
+/* Table styles for GFM markdown tables in assistant responses */
+.prose table { width: 100%; border-collapse: collapse; margin: 0.5rem 0; font-size: 0.8rem; }
+.prose thead tr { background: #EFF6FF; }
+.prose th { text-align: left; padding: 0.4rem 0.65rem; font-weight: 600; color: #1E3A5F; border: 1px solid #BFDBFE; white-space: nowrap; }
+.prose td { padding: 0.35rem 0.65rem; border: 1px solid #E2E8F0; color: #334155; vertical-align: top; }
+.prose tbody tr:nth-child(even) { background: #F8FAFC; }
+.prose tbody tr:hover { background: #F0F7FF; }

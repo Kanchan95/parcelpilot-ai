@@ -21,14 +21,14 @@ data isolation.
 │   │  (web/chat)      │              │  (same UI, elevated access)   │  │
 │   └────────┬─────────┘              └──────────────┬────────────────┘  │
 └────────────┼──────────────────────────────────────┼────────────────────┘
-             │  HTTPS                               │  HTTPS
+             │  HTTP                                │  HTTP
 ┌────────────▼──────────────────────────────────────▼────────────────────┐
 │                     ParcelPilot AI Application                         │
 │                                                                        │
 │  ┌─────────────────┐     ┌──────────────────┐    ┌───────────────────┐│
-│  │  Streamlit UI   │────▶│   FastAPI Layer  │───▶│  Orchestrator     ││
-│  │  (chat, tools,  │     │  (session mgmt,  │    │  (ReAct loop,     ││
-│  │   confirm gate) │     │   REST endpoints)│    │   Claude LLM)     ││
+│  │  React/Vite UI  │────▶│  FastAPI Backend  │───▶│  Orchestrator     ││
+│  │  (chat, tools,  │     │  (session mgmt,   │    │  (ReAct loop,     ││
+│  │   confirm gate) │     │   REST endpoints) │    │   Groq LLM)       ││
 │  └─────────────────┘     └──────────────────┘    └──────┬────────────┘│
 │                                                          │             │
 │           ┌──────────────────────────────────────────────┤             │
@@ -48,7 +48,7 @@ data isolation.
 └────────────────────────────────────────────────────────────────────────┘
 
 External Dependencies:
-  - Anthropic API (Claude claude-sonnet-4-6) — LLM inference
+  - Groq API (openai/gpt-oss-120b) — LLM inference via OpenAI-compatible SDK
   - SentenceTransformers (all-MiniLM-L6-v2) — local embeddings, no external API needed
 ```
 
@@ -58,62 +58,53 @@ External Dependencies:
 
 | Component | Responsibility | Technology |
 |-----------|---------------|------------|
-| **Streamlit UI** | Chat interface, tool activity sidebar, confirmation dialogs | Streamlit 1.40+ |
-| **FastAPI Layer** | Session management, REST API, CORS | FastAPI + Uvicorn |
-| **Orchestrator** | ReAct loop, tool dispatch, message history | Anthropic SDK (tool_use) |
+| **React/Vite UI** | Chat interface, tool activity sidebar, confirmation dialogs, source citations | React 18 + Vite 5 + TypeScript + Tailwind CSS |
+| **FastAPI Backend** | Session management, REST API, SPA serving, CORS | FastAPI + Uvicorn (server.py) |
+| **Orchestrator** | ReAct loop, tool dispatch, message history | OpenAI SDK (Groq endpoint, tool_use format) |
 | **Tool A — Document Search** | RAG over policy docs and agreements | ChromaDB + SentenceTransformers |
 | **Tool B — Structured Lookup** | Account/order/ticket queries with ACL | SQLite (Python built-in) |
 | **Tool C — Action Executor** | State changes with two-phase confirmation | SQLite writes |
-| **Ingestion Pipeline** | Document chunking, embedding, Excel→SQLite | ChromaDB, pandas, openpyxl |
+| **Ingestion Pipeline** | Document chunking, embedding, Excel→SQLite | ChromaDB, pandas, openpyxl, pdfplumber |
 
 ---
 
 ## 4. Data Flow — Customer Asks a Multi-Step Question
 
 ```
-User: "Can I cancel ORD-1003 and get a refund?"
+User: "Can I cancel ORD-1001 without a cancellation fee?"
         │
         ▼
 [1] Auth Layer
-    Resolves account_id = ACC-001 from session (trusted, not from user input)
+    Resolves account_id = ACCT-001 from session (trusted, not from user input)
         │
         ▼
-[2] Orchestrator sends to Claude with tool definitions
-    Claude reasons: "I need to check (a) cancellation policy and (b) order status
-                    before I can cancel anything."
+[2] Orchestrator sends to Groq LLM with tool definitions
+    LLM reasons: "I need to check (a) cancellation policy and (b) order status
+                  to give a definitive YES/NO."
         │
-        ├──[Tool A call]──▶ search_documents("cancellation policy refund")
-        │                        ├── Retrieves current policy: "free within 24h, 10% after"
-        │                        ├── Retrieves Acme Corp agreement: "free within 48h, 5% after"
-        │                        └── Conflict detected: agreement overrides general policy
+        ├──[Tool A call]──▶ search_documents("cancellation policy fee Northstar")
+        │                        ├── Retrieves Northstar Enterprise Agreement
+        │                        │   (account_scope=ACCT-001, authority 3.0×)
+        │                        ├── Retrieves Cancellation SOP v4 (current, 1.8×)
+        │                        └── Agreement override conflict detected:
+        │                            Northstar agreement waives all pre-pickup fees
         │
-        ├──[Tool B call]──▶ lookup_data("get_order", {order_id: "ORD-1003"})
-        │                        ├── WHERE account_id = 'ACC-001' AND order_id = 'ORD-1003'
-        │                        └── Returns: {status: "pending", created_at: today, amount: 2200}
+        ├──[Tool B call]──▶ lookup_data("get_order", {order_id: "ORD-1001"})
+        │                        ├── WHERE account_id = 'ACCT-001' AND order_id = 'ORD-1001'
+        │                        └── Returns: {status: "BOOKED", pickup_actual_at: null}
         │
-        Claude reasons: "Order is pending and created today → within 48h free cancel window
-                        per Acme Corp agreement. Safe to proceed."
-        │
-        ├──[Tool C call]──▶ execute_action("cancel_order", {order_id: "ORD-1003"})
-        │                        └── Returns: {status: "requires_confirmation", summary: "Cancel ORD-1003..."}
-        │
-[3] Orchestrator pauses — returns pending_action to UI
+        LLM reasons: "Order is BOOKED and not yet picked up. Northstar agreement
+                      waives all cancellation fees for any BOOKED shipment.
+                      Answer: YES, no fee."
         │
         ▼
-[4] Streamlit shows confirmation card:
-    "I'm about to cancel ORD-1003 (free cancellation per your agreement). Confirm?"
+[3] Orchestrator returns final response with tool_calls and source attribution
         │
-        ├── User clicks ✅ Confirm
-        │       │
-        │       ▼
-        │   action_executor.confirm_action(action_id)
-        │       ├── UPDATE orders SET status='cancelled' WHERE order_id='ORD-1003' AND account_id='ACC-001'
-        │       └── INSERT INTO actions_log ...
-        │       │
-        │       ▼
-        │   Orchestrator re-enters with result → Claude writes final response
-        │
-        └── User clicks ❌ Cancel → no changes made, user notified
+        ▼
+[4] React UI renders response with collapsible Sources panel showing:
+    - Northstar Enterprise Agreement (Customer Agreement, Authority 100)
+    - Cancellation & Service Credit SOP v4 (Current SOP, Authority 65)
+    - ⚠️ Agreement override: customer agreement takes precedence over general policy
 ```
 
 ---
@@ -126,7 +117,7 @@ User: "Can I cancel ORD-1003 and get a refund?"
 │                                                         │
 │  Layer 1 — Session (Auth)                               │
 │  ┌─────────────────────────────────────────────────┐   │
-│  │ POST /api/auth/login → returns session_id        │   │
+│  │ POST /api/login → returns session_id             │   │
 │  │ session_id maps to account_id in server memory   │   │
 │  │ All subsequent calls carry session_id            │   │
 │  └─────────────────────────────────────────────────┘   │
@@ -163,20 +154,23 @@ User: "Can I cancel ORD-1003 and get a refund?"
 Priority (highest → lowest)
 
   ★★★  Customer Service Agreement
-       e.g., Acme Corp Agreement — overrides ALL general policy
+       e.g., Northstar Enterprise Agreement — overrides ALL general policy
        authority_level = 100, weight = 3.0×
 
-  ★★   Current Official Policy (Policy v2.0)
+  ★★   Current Official Policy (Support Policy v3)
        authority_level = 70, weight = 2.0×
 
-  ★★   Current SOP (SOP v3.0)
-       authority_level = 60, weight = 1.8×
+  ★★   Current SOP (Cancellation & Service Credit SOP v4)
+       authority_level = 65, weight = 1.8×
 
-  ★    Deprecated Policy (Policy v1.0 — superseded Jan 2024)
+  ★    Product Operations Guide (Known Issues: KI-208, KI-211)
+       authority_level = 60, weight = 1.6×
+
+  ★    Deprecated Policy (Support Policy v2 — superseded)
        authority_level = 20, weight = 0.4×
        → Always disclosed as deprecated when cited
 
-  ★    Deprecated SOP (SOP v1.5 — superseded Feb 2024)
+  ★    Deprecated SOP (any superseded SOP)
        authority_level = 15, weight = 0.3×
 
 Re-ranking formula:
@@ -192,31 +186,42 @@ Re-ranking formula:
 ┌──────────────────────────────────────────────────────────┐
 │  Cloud Deployment                                        │
 │                                                          │
-│  ┌────────────────┐    ┌──────────────────────────────┐  │
-│  │  Vercel /      │    │  Railway / Render             │  │
-│  │  Streamlit     │───▶│  FastAPI + Uvicorn            │  │
-│  │  Cloud (UI)    │    │  (2 workers)                  │  │
-│  └────────────────┘    └──────────────┬───────────────┘  │
-│                                        │                  │
-│                          ┌─────────────▼──────────────┐  │
-│                          │  Persistent Volume          │  │
-│                          │  .chromadb/ (vectors)       │  │
-│                          │  parcelpilot.db (SQLite)    │  │
-│                          └────────────────────────────┘  │
+│  ┌────────────────────────────────────────────────────┐  │
+│  │  Railway / Render / Fly.io                         │  │
+│  │  FastAPI + Uvicorn (python server.py)              │  │
+│  │  Serves React SPA from web/dist/ + /api/* routes  │  │
+│  └──────────────────────┬─────────────────────────────┘  │
+│                         │                                │
+│           ┌─────────────▼──────────────┐                │
+│           │  Persistent Volume          │                │
+│           │  .chromadb/ (vectors)       │                │
+│           │  parcelpilot.db (SQLite)    │                │
+│           └────────────────────────────┘                │
 │                                                          │
-│  External: Anthropic API (claude-sonnet-4-6)             │
+│  External: Groq API (openai/gpt-oss-120b)                │
+│            GROQ_API_KEY in environment                   │
 └──────────────────────────────────────────────────────────┘
 
-Demo (local):
-  Terminal 1: streamlit run ui/app.py
-  Terminal 2 (optional): uvicorn api.main:app --reload
+Local demo (single command after setup):
+  python server.py   →  http://localhost:8080
+
+Development (hot-reload):
+  Terminal 1: python server.py
+  Terminal 2: cd web && npm run dev   →  http://localhost:3000
 ```
 
 ---
 
 ## 8. Optional Feature — Proactive Issue Detection
 
-The `lookup_data` tool supports `sla_breach_report` which internal agents can use
-to surface all tickets with `sla_breach = TRUE`. In the full implementation this
-would run on a schedule and cluster tickets by `issue_type` to identify patterns
-(e.g., "12 billing disputes in the past 30 days, up from 3").
+`agent/analysis/issue_detector.py` implements 5 detectors that run over the full
+database when an internal agent calls `lookup_data(operation="proactive_report")`:
+
+- **SLA breach detection**: tickets past their first-response deadline per plan
+- **Missed pickup detection**: BOOKED orders past pickup window with no actual pickup
+- **Complaint cluster detection**: recurring issues by subject keyword
+- **Stale resolution detection**: closed tickets whose historical resolution contradicts
+  the current policy (e.g., TKT-450: fee applied to Northstar cancel — wrong per agreement)
+- **Pending cancellation detection**: orders with `cancellation_requested_at` not yet actioned
+
+Returns a structured markdown digest. Only accessible to `is_internal` sessions.

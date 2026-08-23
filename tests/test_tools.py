@@ -1,10 +1,9 @@
 """
 Unit/integration tests for the three agent tools.
 
-Requires:
-  - python scripts/generate_mock_data.py
-  - python -m ingestion.excel_ingester
-  - python -m ingestion.document_ingester
+Setup (one-time):
+  python -m ingestion.excel_ingester
+  python -m ingestion.document_ingester
 
 Run: pytest tests/test_tools.py -v
 """
@@ -35,27 +34,33 @@ class TestStructuredLookup:
         assert result["count"] >= 2
 
     def test_list_orders_status_filter(self):
-        result = structured_lookup.list_orders("ACC-001", status_filter="pending")
+        # ORD-1001 and ORD-1002 are BOOKED and PICKED_UP respectively — filter for BOOKED
+        result = structured_lookup.list_orders("ACCT-001", status_filter="BOOKED")
         for order in result["orders"]:
-            assert order["status"] == "pending"
+            assert order["status"] == "BOOKED"
+        assert result["count"] >= 1
 
-    def test_get_ticket_with_sla_breach(self):
-        # sla_breach is not a stored column; breach status is computed via sla_breach_report.
+    def test_get_ticket_returns_correct_fields(self):
         result = structured_lookup.get_ticket("TKT-504", "ACCT-001", is_internal=False)
         assert "error" not in result
         assert result.get("ticket_id") == "TKT-504"
-        # Verify the breach report has the correct structure and is scoped to this account
+        assert result.get("account_id") == "ACCT-001"
+
+    def test_sla_breach_report_has_correct_structure(self):
         report = structured_lookup.sla_breach_report("ACCT-001", is_internal=False)
         assert "sla_breached" in report
         assert "sla_at_risk" in report
         assert isinstance(report["sla_breached"], list)
+        # All breached tickets must belong to the requesting account
+        for ticket in report["sla_breached"]:
+            assert ticket["account_id"] == "ACCT-001"
 
     def test_unknown_operation_returns_error(self):
-        result = structured_lookup.lookup("nonexistent_op", {}, "ACC-001", False)
+        result = structured_lookup.lookup("nonexistent_op", {}, "ACCT-001", False)
         assert "error" in result
 
     def test_get_order_missing_param_returns_error(self):
-        result = structured_lookup.lookup("get_order", {}, "ACC-001", False)
+        result = structured_lookup.lookup("get_order", {}, "ACCT-001", False)
         assert "error" in result
 
 
@@ -65,44 +70,45 @@ class TestActionExecutor:
     def test_request_action_returns_requires_confirmation(self):
         result = action_executor.request_action(
             action_type="update_ticket_status",
-            parameters={"ticket_id": "TKT-003", "new_status": "in_progress"},
-            session_account_id="ACC-001",
+            parameters={"ticket_id": "TKT-504", "new_status": "in_progress"},
+            session_account_id="ACCT-001",
             session_id="test",
             is_internal=False,
         )
         assert result["status"] == "requires_confirmation"
         assert "action_id" in result
         assert "summary" in result
+        # Clean up to avoid polluting other tests
+        action_executor.cancel_pending_action(result["action_id"])
 
     def test_action_not_executed_before_confirmation(self):
         result = action_executor.request_action(
             action_type="update_ticket_status",
-            parameters={"ticket_id": "TKT-001", "new_status": "in_progress"},
-            session_account_id="ACC-001",
+            parameters={"ticket_id": "TKT-501", "new_status": "in_progress"},
+            session_account_id="ACCT-001",
             session_id="test",
             is_internal=False,
         )
         action_id = result["action_id"]
-        # Ticket status should NOT be changed yet
-        ticket = structured_lookup.get_ticket("TKT-001", "ACC-001", is_internal=False)
+        # Ticket status must NOT be changed yet (gate not passed)
+        ticket = structured_lookup.get_ticket("TKT-501", "ACCT-001", is_internal=False)
         assert ticket.get("status") != "in_progress", (
             "Action executed before user confirmation — confirmation gate is broken!"
         )
-        # Clean up
         action_executor.cancel_pending_action(action_id)
 
     def test_cancel_pending_action_discards_it(self):
         result = action_executor.request_action(
             action_type="apply_credit",
             parameters={"amount": 100, "reason": "test"},
-            session_account_id="ACC-001",
+            session_account_id="ACCT-001",
             session_id="test",
             is_internal=False,
         )
         action_id = result["action_id"]
         cancel_result = action_executor.cancel_pending_action(action_id)
         assert cancel_result["status"] == "cancelled"
-        # Trying to confirm now should fail (already removed)
+        # Confirming a cancelled action must fail
         confirm_result = action_executor.confirm_action(action_id)
         assert confirm_result["status"] == "error"
 
@@ -122,7 +128,6 @@ class TestActionExecutor:
         executed = action_executor.confirm_action(action_id)
         assert executed["status"] == "executed"
         ticket = structured_lookup.get_ticket("TKT-504", "ACCT-001", is_internal=False)
-        # tickets schema has no priority column; escalate_ticket only updates status
         assert ticket.get("status") == "escalated"
 
 
@@ -130,7 +135,7 @@ class TestActionExecutor:
 
 class TestDocumentSearch:
     """
-    These tests require the ChromaDB to be populated.
+    Requires ChromaDB to be populated.
     Run: python -m ingestion.document_ingester
     """
 
@@ -140,42 +145,47 @@ class TestDocumentSearch:
         if not config.CHROMA_DIR.exists():
             pytest.skip("ChromaDB not initialised — run python -m ingestion.document_ingester")
 
-    def test_search_returns_results_for_refund_query(self):
+    def test_search_returns_results(self):
         from agent.tools.document_search import search
-        result = search("refund window", "ACC-001")
+        result = search("cancellation fee", "ACCT-001")
         assert result["total_results"] > 0
 
-    def test_agreement_ranks_above_policy_for_acme(self):
-        """Acme Corp's agreement chunk should rank higher than general policy chunk."""
+    def test_northstar_agreement_ranks_above_policy(self):
+        """Northstar agreement (weight 3.0×) must rank above SOP (weight 1.8×)."""
         from agent.tools.document_search import search
-        result = search("refund window", "ACC-001")
+        result = search("cancellation fee", "ACCT-001")
         sources = [r["source_type"] for r in result["results"]]
-        if "customer_agreement" in sources and "current_policy" in sources:
-            agreement_idx = next(i for i, s in enumerate(sources) if s == "customer_agreement")
-            policy_idx = next(i for i, s in enumerate(sources) if s == "current_policy")
-            assert agreement_idx < policy_idx, (
-                "Agreement should rank before general policy due to higher authority weight"
-            )
+        assert "customer_agreement" in sources, "Northstar agreement must be retrieved for ACCT-001"
+        agreement_idx = next(i for i, s in enumerate(sources) if s == "customer_agreement")
+        # All policy/SOP docs must rank below the agreement
+        for i, s in enumerate(sources):
+            if s in ("current_policy", "current_sop"):
+                assert agreement_idx < i, (
+                    f"customer_agreement (idx {agreement_idx}) must rank above {s} (idx {i})"
+                )
 
-    def test_globex_cannot_see_acme_agreement(self):
-        """Globex (ACC-002) should not retrieve Acme Corp's service agreement."""
+    def test_lumenworks_cannot_see_northstar_agreement(self):
+        """ACCT-002 (LumenWorks) must not retrieve ACCT-001 (Northstar) agreement."""
         from agent.tools.document_search import search
-        result = search("refund window", "ACC-002")
+        result = search("cancellation fee", "ACCT-002")
         for r in result["results"]:
-            assert "ACC-001" not in r["source"], (
-                f"Cross-account document leak: Globex retrieved Acme's agreement — {r['source']}"
+            assert "Northstar" not in r["source"], (
+                f"Cross-account document leak: LumenWorks retrieved Northstar's agreement"
             )
 
-    def test_deprecated_chunks_are_flagged(self):
+    def test_deprecated_chunks_have_low_authority(self):
         from agent.tools.document_search import search
-        result = search("refund window", "ACC-002")
+        result = search("cancellation fee", "ACCT-002")
         for r in result["results"]:
             if r["is_deprecated"]:
-                assert r["authority_level"] < 50, "Deprecated docs must have low authority"
+                assert r["authority_level"] < 50, (
+                    f"Deprecated doc {r['source']} has unexpectedly high authority {r['authority_level']}"
+                )
 
-    def test_conflict_detected_when_deprecated_present(self):
+    def test_conflict_structure_is_valid(self):
         from agent.tools.document_search import search
-        # Use a query likely to hit both current and deprecated policies
-        result = search("cancellation fee policy", "ACC-001")
-        # May or may not have conflicts depending on retrieval — just ensure structure is correct
+        result = search("cancellation policy", "ACCT-001")
         assert isinstance(result["conflicts"], list)
+        for c in result["conflicts"]:
+            assert "type" in c
+            assert "message" in c

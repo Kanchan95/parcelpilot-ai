@@ -12,9 +12,6 @@ CHROMA_DIR = BASE_DIR / ".chromadb"
 DB_PATH = BASE_DIR / "parcelpilot.db"
 SNAPSHOT_TIME_FILE = BASE_DIR / ".snapshot_time"
 
-ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
-CLAUDE_MODEL: str = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6")
-
 OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o")
 
@@ -29,12 +26,14 @@ TOP_K_RERANKED: int = int(os.getenv("TOP_K_RERANKED", "5"))
 # CORS: allowed frontend origins.
 # In production, set ALLOWED_ORIGINS to your deployed frontend URL.
 # Multiple origins are separated by commas.
-# Defaults cover Vite dev server (5173) and production mode (same port as backend).
+# Defaults cover Vite dev server (port 3000 per vite.config.ts), Vite's own
+# default port (5173), and production mode where FastAPI serves the built SPA
+# on the same port as the backend (8080).
 ALLOWED_ORIGINS: list[str] = [
     o.strip()
     for o in os.getenv(
         "ALLOWED_ORIGINS",
-        "http://localhost:5173,http://localhost:8080",
+        "http://localhost:3000,http://localhost:5173,http://localhost:8080",
     ).split(",")
     if o.strip()
 ]
@@ -59,6 +58,7 @@ AUTHORITY_WEIGHTS: dict[str, float] = {
     "customer_agreement": 3.0,
     "current_policy": 2.0,
     "current_sop": 1.8,
+    "product_guide": 1.6,
     "deprecated_policy": 0.4,
     "deprecated_sop": 0.3,
 }

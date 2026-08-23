@@ -51,10 +51,16 @@ export default function Sidebar({ session, toolLog, onPrompt, onClear, onLogout 
               </span>
             )}
           </div>
-          {/* Replace snapshot with session info */}
-          <div className="mt-2 pt-2 flex items-center gap-1.5" style={{ borderTop: '1px solid #2E4259' }}>
-            <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: '#10B981', boxShadow: '0 0 4px #10B981' }} />
-            <span className="text-[0.6rem]" style={{ color: '#3D5A7A' }}>Session active</span>
+          <div className="mt-2 pt-2" style={{ borderTop: '1px solid #2E4259' }}>
+            <div className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: '#10B981', boxShadow: '0 0 4px #10B981' }} />
+              <span className="text-[0.6rem]" style={{ color: '#3D5A7A' }}>Session active</span>
+            </div>
+            {session.snapshot && (
+              <p className="text-[0.6rem] mt-1 leading-tight" style={{ color: '#3D5A7A' }}>
+                Reference time: <span className="font-mono" style={{ color: '#4B6A8A' }}>{session.snapshot}</span>
+              </p>
+            )}
           </div>
         </div>
 

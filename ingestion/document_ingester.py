@@ -104,14 +104,14 @@ DOCUMENT_METADATA: dict[str, dict] = {
         "source_type": "customer_agreement",
         "authority_level": 100,
         "is_deprecated": False,
-        "account_scope": "ACC-001",
+        "account_scope": "ACCT-001",
         "display_name": "Acme Corp Service Agreement [MOCK]",
     },
     "agreement_globex_ltd": {
         "source_type": "customer_agreement",
         "authority_level": 100,
         "is_deprecated": False,
-        "account_scope": "ACC-002",
+        "account_scope": "ACCT-002",
         "display_name": "Globex Ltd Service Agreement [MOCK]",
     },
 }

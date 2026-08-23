@@ -1,8 +1,7 @@
 """
 Integration tests for access control.
 
-These tests hit the real SQLite DB (must run setup first):
-  python scripts/generate_mock_data.py
+Setup (one-time):
   python -m ingestion.excel_ingester
 
 Run: pytest tests/test_access_control.py -v
@@ -21,17 +20,17 @@ class TestCrossAccountBlocking:
     """A customer must never see another account's data."""
 
     def test_get_order_blocked_for_wrong_account(self):
-        # ORD-2001 belongs to ACC-002; ACC-001 customer should not see it
+        # ORD-2001 belongs to ACCT-002 (LumenWorks); ACCT-001 (Northstar) must not see it
         result = structured_lookup.get_order(
             order_id="ORD-2001",
-            session_account_id="ACC-001",
+            session_account_id="ACCT-001",
             is_internal=False,
         )
         assert "error" in result
         assert "not found or not accessible" in result["error"].lower()
 
     def test_get_order_allowed_for_owner(self):
-        # ORD-1001 belongs to ACCT-001; ACCT-001 customer should see it
+        # ORD-1001 belongs to ACCT-001; ACCT-001 must be able to read it
         result = structured_lookup.get_order(
             order_id="ORD-1001",
             session_account_id="ACCT-001",
@@ -51,21 +50,23 @@ class TestCrossAccountBlocking:
             )
 
     def test_get_ticket_blocked_for_wrong_account(self):
-        # TKT-005 belongs to ACC-002
+        # TKT-501 belongs to ACCT-001; ACCT-002 must not see it
         result = structured_lookup.get_ticket(
-            ticket_id="TKT-005",
-            session_account_id="ACC-001",
+            ticket_id="TKT-501",
+            session_account_id="ACCT-002",
             is_internal=False,
         )
         assert "error" in result
 
     def test_list_tickets_scoped_to_account(self):
         result = structured_lookup.list_tickets(
-            session_account_id="ACC-002",
+            session_account_id="ACCT-002",
             is_internal=False,
         )
         for ticket in result["tickets"]:
-            assert ticket["account_id"] == "ACC-002"
+            assert ticket["account_id"] == "ACCT-002", (
+                f"Cross-account leak: {ticket['ticket_id']} belongs to {ticket['account_id']}"
+            )
 
     def test_internal_agent_can_access_any_order(self):
         # Internal agents bypass account scoping
@@ -88,14 +89,16 @@ class TestCrossAccountBlocking:
 
 
 class TestActionAccessControl:
-    """Actions must be scoped to the session account."""
+    """Actions must be scoped to the session account — cannot affect another account's data."""
 
     def test_cancel_order_does_not_affect_other_account(self):
-        # Request cancel on ORD-2002 (ACC-002) while logged in as ACC-001
+        # ACCT-001 session tries to cancel ORD-2002 (belongs to ACCT-002).
+        # The action executor's SQL is: UPDATE orders SET status='CANCELLED'
+        # WHERE order_id='ORD-2002' AND account_id='ACCT-001' → 0 rows affected.
         pending = action_executor.request_action(
             action_type="cancel_order",
             parameters={"order_id": "ORD-2002"},
-            session_account_id="ACC-001",
+            session_account_id="ACCT-001",
             session_id="test-session",
             is_internal=False,
         )
@@ -103,14 +106,11 @@ class TestActionAccessControl:
         action_id = pending["action_id"]
 
         result = action_executor.confirm_action(action_id)
-        # The action executor targets session_account_id (ACC-001), so the UPDATE
-        # WHERE account_id='ACC-001' AND order_id='ORD-2002' will match 0 rows.
-        # ORD-2002 remains untouched.
         assert result["status"] == "executed"
-        # Verify ORD-2002 still exists under ACC-002 with unchanged status
-        order = structured_lookup.get_order("ORD-2002", "ACC-002", is_internal=True)
-        assert order.get("status") != "cancelled", (
-            "Cross-account action leaked: ORD-2002 (ACC-002) was cancelled by ACC-001 session"
+        # ORD-2002 must still belong to ACCT-002 with its original status
+        order = structured_lookup.get_order("ORD-2002", "ACCT-002", is_internal=True)
+        assert order.get("status") != "CANCELLED", (
+            "Cross-account action leaked: ORD-2002 (ACCT-002) was cancelled by ACCT-001 session"
         )
 
 

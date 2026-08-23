@@ -1,30 +1,31 @@
 # ParcelPilot AI Support System
 
 > **CalQuity — AI Engineer Assessment**
-> Built with Claude (claude-sonnet-4-6) · ChromaDB · Streamlit · FastAPI · SQLite
+> FastAPI · React/Vite · Groq LLM · ChromaDB · SQLite
 
 ---
 
 ## Overview
 
-ParcelPilot's 20-person ops team manually handles hundreds of weekly support tickets —
-refunds, cancellations, credits, order queries, and policy questions across multiple
+ParcelPilot's ops team manually handles hundreds of weekly support tickets —
+cancellations, credits, policy questions, and order queries across multiple
 overlapping data sources, some of which are outdated or customer-specific.
 
 This project replaces that manual workflow with a **multi-tool AI agent** that:
 
-- Answers natural-language questions using only the supplied documents and data
-- Enforces per-account data isolation (no cross-account leaks)
+- Answers natural-language questions using only the supplied assessment documents and data
+- Enforces per-account data isolation at the SQL layer (no cross-account leaks)
 - Chains three tools in a single response: document search → data lookup → action
 - Never executes a state-changing action without explicit user confirmation
 - Detects and discloses conflicts between current and deprecated sources
+- Distinguishes customer-specific agreement terms from general policy
 - Handles both customer-facing and internal-ops workflows from a single UI
 
 ---
 
 ## Live Demo
 
-> **[Hosted App](#)** · **[Demo Video](#)** · **[GitHub](https://github.com/your-username/parcelpilot-ai)**
+> **GitHub repository URL, hosted app link, and demo video will be added here before final submission.**
 
 ---
 
@@ -32,18 +33,19 @@ This project replaces that manual workflow with a **multi-tool AI agent** that:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                       Streamlit Chat Interface                          │
-│   login · chat bubbles · tool activity sidebar · confirmation dialogs  │
+│                       React / Vite UI (TypeScript)                      │
+│   login · chat bubbles · tool chips · Sources panel · confirm dialogs   │
 └────────────────────────────────┬────────────────────────────────────────┘
-                                 │
+                                 │ HTTP
                          ┌───────▼────────┐
-                         │  Auth Layer    │  session_id → account_id
-                         └───────┬────────┘  (enforced in every tool call)
+                         │  FastAPI       │  session_id → account_id
+                         │  server.py     │  (enforced in every tool call)
+                         └───────┬────────┘
                                  │
                     ┌────────────▼─────────────────────────────┐
                     │           Orchestrator                    │
-                    │  Claude claude-sonnet-4-6 · tool_use API │
-                    │  ReAct loop · message history             │
+                    │  Groq LLM (openai/gpt-oss-120b)          │
+                    │  OpenAI-compatible SDK · ReAct loop       │
                     └────┬──────────────┬───────────────┬──────┘
                          │              │               │
                ┌─────────▼──┐  ┌────────▼──────┐  ┌───▼──────────────┐
@@ -59,13 +61,13 @@ This project replaces that manual workflow with a **multi-tool AI agent** that:
                │  metadata) │  │ orders        │  │                  │
                └────────────┘  │ tickets       │  └──────────────────┘
                                └───────────────┘
-  Documents ingested:
-  · policy_v2_current.txt       (authority: 70)
-  · policy_v1_deprecated.txt    (authority: 20) ← flagged when cited
-  · sop_v3_current.txt          (authority: 60)
-  · sop_v1_deprecated.txt       (authority: 15) ← flagged when cited
-  · agreement_acme_corp.txt     (authority: 100, scoped to ACC-001)
-  · agreement_globex_ltd.txt    (authority: 100, scoped to ACC-002)
+  Documents ingested (real assessment PDFs):
+  · 01_Support_Policy_v3_CURRENT.pdf          (current policy, authority 2.0×)
+  · 02_Support_Policy_v2_DEPRECATED.pdf       (deprecated, authority 0.4×) ← flagged
+  · 03_Cancellation_and_Service_Credit_SOP_v4 (current SOP, authority 1.8×)
+  · 04_Product_Operations_Guide_and_Known_Issues (product guide, authority 1.6×)
+  · 05_Northstar_Logistics_Enterprise_Agreement (authority 3.0×, scoped to ACCT-001)
+  · 06_LumenWorks_Service_Agreement             (authority 3.0×, scoped to ACCT-002)
 ```
 
 ---
@@ -74,47 +76,46 @@ This project replaces that manual workflow with a **multi-tool AI agent** that:
 
 ```
 parcelpilot-ai/
-├── setup.sh                        # One-command setup
-├── requirements.txt
+├── server.py                       # Active FastAPI server (port 8080)
 ├── config.py                       # All constants & env vars
+├── requirements.txt
 ├── .env.example
+├── setup.sh                        # One-command setup
 │
 ├── data/
-│   ├── documents/                  # 6 source documents (4 policy + 2 agreements)
-│   └── structured/                 # Excel file (generated by script)
-│
-├── scripts/
-│   └── generate_mock_data.py       # Creates parcelpilot_data.xlsx
+│   ├── documents/                  # 6 assessment PDF documents
+│   └── structured/
+│       └── ParcelPilot_Assessment_Data.xlsx   # authoritative assessment data
 │
 ├── ingestion/
-│   ├── document_ingester.py        # Chunks, embeds, stores in ChromaDB
-│   └── excel_ingester.py           # Excel → SQLite
+│   ├── document_ingester.py        # Chunks PDFs, embeds, stores in ChromaDB
+│   └── excel_ingester.py           # Excel → SQLite (accounts, orders, tickets)
 │
 ├── agent/
-│   ├── orchestrator.py             # ReAct loop using Claude tool_use
+│   ├── orchestrator.py             # ReAct loop via Groq API
+│   ├── analysis/
+│   │   └── issue_detector.py       # Proactive SLA + pattern detection
 │   └── tools/
 │       ├── document_search.py      # Tool A: RAG + authority re-ranking
 │       ├── structured_lookup.py    # Tool B: SQL queries + access control
 │       └── action_executor.py      # Tool C: two-phase confirmation gate
 │
-├── agent/analysis/
-│   └── issue_detector.py           # Optional: proactive SLA + pattern detection
+├── web/                            # React/Vite frontend
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── ChatApp.tsx         # Main chat interface
+│   │   │   ├── MessageBubble.tsx   # Message + Sources panel
+│   │   │   ├── Sidebar.tsx         # Quick prompts + tool activity
+│   │   │   └── LoginPage.tsx       # Account selector
+│   │   ├── types.ts
+│   │   └── api.ts
+│   └── dist/                       # Production build (served by FastAPI)
 │
-├── api/
-│   ├── main.py                     # FastAPI (chat, confirm, auth endpoints)
-│   └── models.py                   # Pydantic request/response models
-│
-├── ui/
-│   └── app.py                      # Streamlit chat UI
-│
-├── tests/
-│   ├── conftest.py
-│   ├── test_access_control.py      # Cross-account blocking, scoped queries
-│   └── test_tools.py               # Tool unit tests + trust hierarchy
-│
-└── docs/
-    ├── HLD.md                      # High-Level Design with diagrams
-    └── LLD.md                      # Low-Level Design: schemas, interfaces, sequences
+└── tests/
+    ├── conftest.py                      # Test DB isolation fixture
+    ├── test_assessment_scenarios.py     # Primary scenario regression tests (51 total)
+    ├── test_access_control.py           # Cross-account blocking, scoped queries
+    └── test_tools.py                    # Tool unit tests + trust hierarchy
 ```
 
 ---
@@ -123,52 +124,61 @@ parcelpilot-ai/
 
 ### Prerequisites
 - Python 3.10+
-- An Anthropic API key ([get one here](https://console.anthropic.com))
+- A Groq API key — [get one free at console.groq.com](https://console.groq.com)
+- Node 18+ (for building the frontend)
 
-### Quick Start (one command)
+### Quick Start (automated)
 
 ```bash
-git clone https://github.com/your-username/parcelpilot-ai.git
+git clone <YOUR_GITHUB_REPO_URL>
 cd parcelpilot-ai
 bash setup.sh
 ```
 
 The setup script:
-1. Creates a virtual environment
+1. Creates a Python virtual environment
 2. Installs all dependencies
-3. Generates mock data (accounts, orders, tickets) → Excel
-4. Loads Excel into SQLite
-5. Chunks and embeds the 6 policy/agreement documents into ChromaDB
+3. Loads the real assessment Excel data into SQLite
+4. Chunks and embeds the 6 assessment PDFs into ChromaDB
    *(downloads `all-MiniLM-L6-v2` ~80 MB on first run)*
+5. Builds the React frontend (requires Node 18+)
 
-Then add your API key:
+Then add your Groq API key:
 
 ```bash
 # Edit .env and set:
-ANTHROPIC_API_KEY=sk-ant-...
+GROQ_API_KEY=your_groq_key_here
 ```
 
 ### Run the App
 
 ```bash
 source .venv/bin/activate
-streamlit run ui/app.py
+python server.py
+# → http://localhost:8080
 ```
 
-Open [http://localhost:8501](http://localhost:8501)
+This serves the built React frontend **and** all `/api/*` routes from a single process.
 
-### Run the API (optional)
+### Development Mode (hot-reload UI)
 
 ```bash
-uvicorn api.main:app --reload
-# Swagger UI: http://localhost:8000/docs
+# Terminal 1 — backend
+python server.py
+
+# Terminal 2 — frontend with hot reload
+cd web && npm run dev
+# → http://localhost:3000   (proxies /api → localhost:8080)
 ```
 
 ### Run Tests
 
 ```bash
 pytest tests/ -v
+# Expected: 51 passed
 ```
+
+Tests use a session-scoped temp copy of the database — the real `parcelpilot.db` is never mutated.
 
 ---
 
@@ -176,63 +186,77 @@ pytest tests/ -v
 
 ### The Three Agent Tools
 
-| Tool | When Claude uses it | What it does |
-|------|-------------------|--------------|
-| **search_documents** | Policy questions, SLA terms, refund windows, procedures | Embeds the query, searches ChromaDB, re-ranks by authority weight × relevance |
-| **lookup_data** | Order status, credit balance, ticket history, account info | SQL query against SQLite — always filtered by `account_id` |
-| **execute_action** | Cancel order, apply credit, escalate/close ticket | Phase 1: returns confirmation summary. Phase 2: executes only after user confirms |
+| Tool | When the agent uses it | What it does |
+|------|------------------------|--------------|
+| **search_documents** | Policy questions, SLA terms, cancellation rules, credit eligibility | Embeds the query, searches ChromaDB with account-scope filter, re-ranks by `cosine_similarity × authority_weight` |
+| **lookup_data** | Order status, credit balance, ticket history, account info, SLA breach report | SQL query against SQLite — always filtered by `session_account_id` (hardcoded, not LLM-supplied) |
+| **execute_action** | Cancel order, apply credit, escalate/close ticket | Phase 1: returns confirmation summary. Phase 2: executes only after user clicks Confirm |
 
 ### Source Trust Hierarchy
 
 When two documents say different things, the agent follows this order:
 
 ```
-1. Customer Service Agreement     (authority 100, weight 3.0×)  ← always wins
-2. Current Policy v2.0            (authority 70,  weight 2.0×)
-3. Current SOP v3.0               (authority 60,  weight 1.8×)
-4. Deprecated Policy v1.0         (authority 20,  weight 0.4×)  ← flagged when cited
-5. Deprecated SOP v1.5            (authority 15,  weight 0.3×)  ← flagged when cited
+1. Customer Service Agreement     (weight 3.0×)  ← always wins
+   e.g., Northstar Enterprise Agreement overrides the general SOP
+
+2. Current Policy v3              (weight 2.0×)
+3. Current SOP v4                 (weight 1.8×)
+4. Product Operations Guide       (weight 1.6×)
+5. Deprecated Policy v2           (weight 0.4×)  ← flagged as deprecated when cited
+6. Deprecated SOP                 (weight 0.3×)  ← flagged as deprecated when cited
 ```
 
 Re-ranking formula: `score = cosine_similarity × authority_weight`
 
-The agent always discloses conflicts explicitly, e.g.:
-> *"I found two policies on refund windows. The current policy says 30 days.
-> An older deprecated policy says 14 days — I'm following the current policy."*
+The agent always discloses conflicts. If a customer agreement differs from the general
+policy, the response explicitly states both and says which one applies.
 
 ### Access Control
 
 Access control is enforced at the **tool layer**, not just the UI:
 
-- Every SQL query adds `AND account_id = :session_account_id` (hardcoded — the LLM cannot override it)
-- ChromaDB retrieval filters by `account_scope = 'global' OR account_scope = session_account_id`
-- A customer logged in as ACC-001 cannot read ACC-002's orders, tickets, or service agreement — even if they try to ask for it by name
-
-Internal agents bypass account scoping but all their actions are audit-logged.
+- Every SQL query appends `AND account_id = session_account_id` (hardcoded — the LLM cannot override it)
+- ChromaDB retrieval filters: `account_scope = 'global' OR account_scope = session_account_id`
+- A customer logged in as ACCT-001 (Northstar) cannot read ACCT-002's (LumenWorks) orders, tickets, or service agreement — even by name
+- Internal agents bypass account scoping but all their actions are audit-logged
 
 ### Confirmation Gate
 
 ```
-User: "Cancel my order ORD-1003"
+User: "Cancel ORD-1001"
          │
          ▼
-Agent calls execute_action("cancel_order", {"order_id": "ORD-1003"})
+Agent calls execute_action("cancel_order", {"order_id": "ORD-1001"})
          │
          ▼
-Tool returns: {status: "requires_confirmation", summary: "Cancel ORD-1003..."}
+Tool returns: {status: "requires_confirmation", summary: "Cancel ORD-1001..."}
          │
          ▼
 UI shows confirmation card → user clicks ✅ Confirm
          │
          ▼
-confirm_action(action_id) → UPDATE orders SET status='cancelled'
-                          → INSERT INTO actions_log
+/api/confirm → confirm_action(action_id)
+             → UPDATE orders SET status='CANCELLED'
+             → INSERT INTO actions_log
          │
          ▼
-Agent writes final response: "Order ORD-1003 has been cancelled."
+Agent writes final response: "ORD-1001 has been cancelled."
 ```
 
 The action is **never** executed before the user clicks Confirm.
+
+---
+
+## Demo Accounts
+
+| Account ID | Company | Plan |
+|---|---|---|
+| ACCT-001 | Northstar Logistics | Enterprise |
+| ACCT-002 | LumenWorks | Growth |
+| ACCT-003 | Beacon Retail | Standard |
+| ACCT-004 | Axis Labs | Enterprise |
+| INTERNAL | ParcelPilot Ops | — (full access) |
 
 ---
 
@@ -240,68 +264,83 @@ The action is **never** executed before the user clicks Confirm.
 
 Run these in the UI to demonstrate all key features:
 
-### 1. Policy Question with Conflict Resolution (Tool A)
-Login as **Acme Corp (ACC-001)**
+### 1. Agreement override — fee-free cancellation (Tools A + B)
+Login as **Northstar Logistics (ACCT-001)**
 ```
-What is my refund window?
+Can I cancel ORD-1001 without a cancellation fee?
 ```
-Expected: Agent cites the Acme Corp Agreement (45 days), notes it overrides the
-general policy (30 days), and flags that a deprecated policy exists (14 days).
+Expected: Agent retrieves Northstar Enterprise Agreement (3.0× authority) AND
+the general Cancellation SOP. Conflict detected: agreement overrides SOP.
+ORD-1001 is BOOKED and not yet picked up. Answer: **YES, no fee** (Northstar agreement
+waives all fees for any BOOKED shipment before pickup, regardless of time elapsed).
 
-### 2. Order Status Lookup (Tool B)
+### 2. Service credit eligibility — account-specific terms (Tools A + B)
+Login as **LumenWorks (ACCT-002)**
 ```
-Show me all my open orders
+Is ORD-2002 eligible for a service credit?
 ```
-Expected: Returns only ACC-001 orders. No other account's data appears.
+Expected: LumenWorks agreement retrieved (3.0×) alongside general SOP. ORD-2002
+has `carrier_fault=1`, pickup was missed by >4 hours. LumenWorks agreement specifies
+a fixed INR 300 credit for this scenario (overrides the general SOP's INR 500/10% cap).
+Answer: **YES, INR 300** per LumenWorks agreement.
 
-### 3. Multi-Step: Eligibility Check + Action (Tools A + B + C)
+### 3. Cross-account access block (access control)
+Login as **Northstar Logistics (ACCT-001)** and ask:
 ```
-Can I cancel order ORD-1003 and get a refund?
+Show me order ORD-2001
 ```
-Expected: Agent checks cancellation policy (Tool A), fetches order details (Tool B),
-determines eligibility, requests action via Tool C, shows confirmation card, then
-executes on confirm.
+Expected: "Order ORD-2001 not found or not accessible for this account."
+(ORD-2001 belongs to ACCT-002; the SQL `WHERE account_id='ACCT-001'` blocks it.)
 
-### 4. Cross-Account Block Demo (access control)
+### 4. Multi-step escalation — P1 ticket (Tools A + B + C)
+Login as **Northstar Logistics (ACCT-001)**
 ```
-Show me the details of order ORD-2001
+Status of TKT-501?
 ```
-Expected while logged in as ACC-001: "Order ORD-2001 not found or not accessible."
-(ORD-2001 belongs to ACC-002 — SQL WHERE clause blocks it.)
+Expected: Agent retrieves TKT-501 (P1: all shipment creation failing, HTTP 500).
+Checks SLA policy. Recommends immediate escalation. Requests confirmation before
+updating ticket status.
 
-### 5. Internal Agent — SLA Breach Report (Tool B)
+### 5. Known issue lookup — product guide (Tool A)
+Login as **LumenWorks (ACCT-002)**
+```
+Why is bulk CSV upload failing for a 4,200-row file?
+```
+Expected: Product Operations Guide retrieved (KI-208: bulk upload fails for >3,000
+rows due to a known bug; workaround: split into batches under 3,000). Conflict
+detection: may also surface deprecated policy if present.
+
+### 6. Internal proactive report (Tool B + issue detector)
 Login as **Internal Agent**
 ```
-Show me all SLA-breached tickets across all accounts
+Show proactive issue report
 ```
-Expected: Returns tickets from all accounts where `sla_breach = 1`.
-
-### 6. Proactive Issue Detection
-Login as **Internal Agent**
-```
-Run a proactive issue detection report
-```
-Expected: Surfaces billing dispute cluster (5 tickets in 30 days), 3 SLA breaches,
-and 1 overdue delivery.
+Expected: Digest surfaces SLA-breached tickets, missed pickups, pending cancellations,
+stale resolutions (including TKT-450 where INR 250 fee was incorrectly applied to
+a Northstar cancel — violates their agreement).
 
 ---
 
 ## Optional Features Built
 
 ### Proactive Issue Detection (`agent/analysis/issue_detector.py`)
-Analyses the ticket database to surface:
-- **Recurring complaint clusters**: groups tickets by `issue_type`, flags types with
-  high frequency (e.g., "5 billing disputes in 30 days")
-- **SLA breach detection**: all open tickets past their SLA deadline
-- **Overdue orders**: orders past `estimated_delivery` still in `in_transit`
-- Returns a structured markdown digest for internal agents
+Analyses the full database to surface:
+- **SLA breach detection**: open tickets past their first-response deadline per plan
+- **Missed pickup detection**: BOOKED orders past pickup window with no actual pickup
+- **Complaint cluster detection**: recurring issue keywords
+- **Stale resolution detection**: closed tickets with historical resolutions that
+  contradict current policy
+- **Pending cancellation detection**: orders with unactioned cancellation requests
+
+Returns a structured markdown digest. Available only to internal agents via
+`lookup_data(operation="proactive_report")`.
 
 ### Trust & Reliability Disclosures
 Built into the document search tool and agent system prompt:
-- Every deprecated chunk is flagged with `is_deprecated: true` in metadata
+- Every deprecated chunk is tagged `is_deprecated=true` in ChromaDB metadata
 - Authority-weighted re-ranking ensures deprecated docs lose to current ones
 - Conflict detection surfaces both the trusted and overridden source explicitly
-- Agent is instructed to always name its source and disclose uncertainty
+- Historical ticket resolutions always returned with "may not reflect current policy" disclaimer
 
 ---
 
@@ -309,46 +348,40 @@ Built into the document search tool and agent system prompt:
 
 | Choice | Why |
 |--------|-----|
-| **Claude claude-sonnet-4-6** | Best-in-class tool_use, strong instruction following, long context for multi-source reasoning |
-| **Native Anthropic tool_use** | Full control over the ReAct loop; no LangChain abstraction overhead |
-| **SentenceTransformers (local)** | No second API key needed; `all-MiniLM-L6-v2` is fast and accurate enough for this corpus |
+| **Groq API (openai/gpt-oss-120b)** | Fast inference; OpenAI-compatible tool_use format works with the standard `openai` SDK |
+| **OpenAI SDK (not Anthropic SDK)** | Groq's API speaks the OpenAI chat completions format; vendor-neutral SDK |
+| **SentenceTransformers (local)** | No second API key; `all-MiniLM-L6-v2` is fast and accurate for this 6-document corpus |
 | **ChromaDB** | Persistent local vector store with metadata filtering — zero external infra |
 | **SQLite** | Built into Python, portable, no DB server for assessment/demo |
 | **Access control at tool layer** | LLM prompt injection cannot bypass a SQL `WHERE account_id = ?` clause |
 | **Two-phase confirmation** | Irreversible actions (cancel, credit) must have human in the loop |
-| **Streamlit** | Fastest path to a real, demonstrable chat UI |
-| **FastAPI** | Optional REST layer that shows production architecture intent |
+| **React + Vite** | Type-safe, hot-reload, production-optimised SPA — modern and fast |
+| **FastAPI** | Serves both the API and the built React SPA from a single process |
 
 ---
 
 ## API Reference
 
 ```
-POST  /api/auth/login   { account_id }              → { session_id, role }
-POST  /api/chat         { session_id, message }      → { text, tool_calls, pending_action }
-POST  /api/confirm      { session_id, action_id, confirmed } → { text }
-DELETE /api/session/{id}                             → { status }
-GET   /api/health                                   → { status, model }
+POST  /api/login    { account_id }                           → { session_id, company, plan, is_internal, snapshot }
+POST  /api/chat     { session_id, message }                  → { text, tool_calls, pending_action }
+POST  /api/confirm  { session_id, action_id, confirmed }     → { text, tool_calls, pending_action }
+GET   /api/stats    ?session_id=...                          → { open_tickets, pending_cancels, ... }
+POST  /api/logout   { session_id }                           → { ok }
+GET   /api/health                                            → { status, model, ai_configured, db }
 ```
-
-Full interactive docs at `/docs` when the FastAPI server is running.
 
 ---
 
 ## Assessment Deliverables
 
 | Deliverable | Status |
-|-------------|--------|
+|---|---|
 | Public repository with setup instructions | ✅ This repo + `setup.sh` |
-| Hosted application | ✅ [Hosted link](#) |
-| 5-minute demo video | ✅ [Video link](#) |
-| Architecture note | ✅ [`docs/HLD.md`](docs/HLD.md) |
+| Hosted application | ⏳ To be added before submission |
+| 5-minute demo video | ⏳ To be added before submission |
+| Architecture note | ✅ [`ARCHITECTURE.md`](ARCHITECTURE.md) |
+| High-Level Design | ✅ [`docs/HLD.md`](docs/HLD.md) |
+| Low-Level Design | ✅ [`docs/LLD.md`](docs/LLD.md) |
 | Product note | ✅ [`PRODUCT_NOTE.md`](PRODUCT_NOTE.md) |
 | AI tool usage disclosure | ✅ [`AI_TOOL_DISCLOSURE.md`](AI_TOOL_DISCLOSURE.md) |
-
----
-
-## AI Tool Usage Disclosure
-
-See [`AI_TOOL_DISCLOSURE.md`](AI_TOOL_DISCLOSURE.md) for a full list of AI tools
-used during the development of this project.
