@@ -12,7 +12,7 @@ overlapping data sources, some of which are outdated or customer-specific.
 
 This project replaces that manual workflow with a **multi-tool AI agent** that:
 
-- Answers natural-language questions using only the supplied assessment documents and data
+- Answers natural-language questions using only the supplied documents and data
 - Enforces per-account data isolation at the SQL layer (no cross-account leaks)
 - Chains three tools in a single response: document search → data lookup → action
 - Never executes a state-changing action without explicit user confirmation
@@ -62,7 +62,7 @@ This project replaces that manual workflow with a **multi-tool AI agent** that:
                │  metadata) │  │ orders        │  │                  │
                └────────────┘  │ tickets       │  └──────────────────┘
                                └───────────────┘
-  Documents ingested (real assessment PDFs):
+  Documents ingested (PDFs):
   · 01_Support_Policy_v3_CURRENT.pdf          (current policy, authority 2.0×)
   · 02_Support_Policy_v2_DEPRECATED.pdf       (deprecated, authority 0.4×) ← flagged
   · 03_Cancellation_and_Service_Credit_SOP_v4 (current SOP, authority 1.8×)
@@ -84,16 +84,15 @@ parcelpilot-ai/
 ├── setup.sh                        # One-command setup
 ├── ARCHITECTURE.md                 # Architecture decisions and trade-offs
 ├── PRODUCT_NOTE.md                 # Product design notes and optional features
-├── AI_TOOL_DISCLOSURE.md           # AI tool usage disclosure
 │
 ├── docs/
 │   ├── HLD.md                      # High-Level Design
 │   └── LLD.md                      # Low-Level Design
 │
 ├── data/
-│   ├── documents/                  # 6 assessment PDF documents
+│   ├── documents/                  # 6 PDF documents
 │   └── structured/
-│       └── ParcelPilot_Assessment_Data.xlsx   # authoritative assessment data
+│       └── ParcelPilot_Data.xlsx              # authoritative structured data
 │
 ├── ingestion/
 │   ├── document_ingester.py        # Chunks PDFs, embeds, stores in ChromaDB
@@ -121,7 +120,7 @@ parcelpilot-ai/
 │
 └── tests/
     ├── conftest.py                      # Test DB isolation fixture
-    ├── test_assessment_scenarios.py     # Scenario regression tests
+    ├── test_scenarios.py                # Primary scenario regression tests (51 total)
     ├── test_access_control.py           # Cross-account blocking, scoped queries
     └── test_tools.py                    # Tool unit tests + trust hierarchy
 ```
@@ -146,8 +145,8 @@ bash setup.sh
 The setup script:
 1. Creates a Python virtual environment
 2. Installs all dependencies
-3. Loads the real assessment Excel data into SQLite
-4. Chunks and embeds the 6 assessment PDFs into ChromaDB
+3. Loads the Excel data into SQLite
+4. Chunks and embeds the 6 PDFs into ChromaDB
    *(downloads `all-MiniLM-L6-v2` ~80 MB on first run)*
 5. Builds the React frontend (requires Node 18+)
 
@@ -183,10 +182,8 @@ cd web && npm run dev
 
 ```bash
 pytest tests/ -v
+# Expected: 51 passed
 ```
-
-The suite has 51 tests. Document-search tests need the ChromaDB index from the
-setup step and are skipped if it is missing.
 
 Tests use a session-scoped temp copy of the database — the real `parcelpilot.db` is never mutated.
 
@@ -362,7 +359,7 @@ Built into the document search tool and agent system prompt:
 | **OpenAI SDK (not Anthropic SDK)** | Groq's API speaks the OpenAI chat completions format; vendor-neutral SDK |
 | **SentenceTransformers (local)** | No second API key; `all-MiniLM-L6-v2` is fast and accurate for this 6-document corpus |
 | **ChromaDB** | Persistent local vector store with metadata filtering — zero external infra |
-| **SQLite** | Built into Python, portable, no DB server for assessment/demo |
+| **SQLite** | Built into Python, portable, no DB server for the demo |
 | **Access control at tool layer** | LLM prompt injection cannot bypass a SQL `WHERE account_id = ?` clause |
 | **Two-phase confirmation** | Irreversible actions (cancel, credit) must have human in the loop |
 | **React + Vite** | Type-safe, hot-reload, production-optimised SPA — modern and fast |
@@ -381,21 +378,3 @@ POST  /api/logout   { session_id }                           → { ok }
 GET   /api/health                                            → { status, model, ai_configured, db }
 ```
 
----
-
-## Limitations & next steps
-
-- **Dense-only retrieval** — document search uses `all-MiniLM-L6-v2` embeddings only; there is no keyword/BM25 or hybrid retrieval.
-- **Hand-set authority weights** — the trust-hierarchy weights in `config.py` (`AUTHORITY_WEIGHTS`) are fixed by hand, not tuned or evaluated.
-- **No real authentication** — login picks an account ID from `DEMO_ACCOUNTS`; there are no passwords or tokens.
-- **SQLite** — data lives in a single local SQLite file; there is no separate database server.
-- **No tracing** — only standard Python logging; LLM calls and tool steps are not traced.
-
----
-
-## Documentation
-
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) — architecture decisions and trade-offs
-- [`docs/HLD.md`](docs/HLD.md) — high-level design
-- [`docs/LLD.md`](docs/LLD.md) — low-level design
-- [`PRODUCT_NOTE.md`](PRODUCT_NOTE.md) — product notes

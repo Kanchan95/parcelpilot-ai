@@ -8,7 +8,7 @@ The system uses a **ReAct (Reason + Act) loop** with the LLM's tool_use API
 (OpenAI-compatible format, served via Groq) rather than a single-pass RAG pipeline.
 
 **Why ReAct and not simple RAG?**
-The two example queries from the assessment reveal why:
+Two example queries show why:
 
 > "Can Northstar cancel ORD-1001 without a cancellation fee?"
 
@@ -191,7 +191,7 @@ precision on policy-specific queries degrades, switch to OpenAI or Voyage AI emb
 
 ### 2. SQLite vs. PostgreSQL
 **Chosen**: SQLite (built-in Python, no server)
-**Trade-off**: Single-file, zero setup, fully portable. Ideal for an assessment demo
+**Trade-off**: Single-file, zero setup, fully portable. Ideal for a demo
 that must run in one command on any machine.
 Cost: no concurrent writes, no row-level security, limited to a single process.
 **Production flip point**: The first time two concurrent agents need to write to the
