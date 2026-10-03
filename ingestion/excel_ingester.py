@@ -1,5 +1,5 @@
 """
-Loads ParcelPilot_Assessment_Data.xlsx into a local SQLite database at DB_PATH.
+Loads ParcelPilot_Data.xlsx into a local SQLite database at DB_PATH.
 Run once: python -m ingestion.excel_ingester
 
 Real Excel sheet names and columns:
@@ -19,7 +19,7 @@ from pathlib import Path
 
 import config
 
-EXCEL_PATH = config.STRUCTURED_DIR / "ParcelPilot_Assessment_Data.xlsx"
+EXCEL_PATH = config.STRUCTURED_DIR / "ParcelPilot_Data.xlsx"
 
 # Only the tables NOT loaded from Excel need explicit DDL.
 # accounts / orders / tickets are created by pandas (if_exists="replace").
@@ -47,7 +47,7 @@ def _dt_to_str(df: pd.DataFrame) -> pd.DataFrame:
 def _read_snapshot_time(xl: pd.ExcelFile) -> str | None:
     """
     Reads the snapshot time from the workbook's README sheet.
-    The assignment requires all time-based calculations to be relative to this
+    All time-based calculations are relative to this
     value, NOT datetime.now().
     """
     readme_candidates = [s for s in xl.sheet_names if "readme" in s.lower()]
@@ -69,7 +69,7 @@ def ingest_excel() -> None:
     if not EXCEL_PATH.exists():
         raise FileNotFoundError(
             f"Excel file not found at {EXCEL_PATH}. "
-            "Place ParcelPilot_Assessment_Data.xlsx in data/structured/"
+            "Place ParcelPilot_Data.xlsx in data/structured/"
         )
 
     xl = pd.ExcelFile(EXCEL_PATH)
