@@ -81,7 +81,7 @@ retrieval weight. After N flags, quarantine the chunk and alert an admin.
    `account_id`. A production system needs OAuth 2.0 / SSO, JWT with expiry, MFA
    for internal agents, and a persistent session store (Redis). Omitted because it
    adds infrastructure complexity without testing the AI system design, which is the
-   focus of this assessment.
+   focus of this project.
 
 2. **Live carrier API integration**: Answering "where is my package right now?"
    requires live tracking data from carrier APIs (e.g., Delhivery, Blue Dart, FedEx).
@@ -90,7 +90,7 @@ retrieval weight. After N flags, quarantine the chunk and alert an admin.
 
 3. **Scheduled proactive reporting**: The issue detector runs on-demand. A production
    system would run it on a schedule (e.g., daily at 8 AM) and push a digest to Slack
-   or email. Omitted because scheduling infrastructure is not the core assessment focus.
+   or email. Omitted because scheduling infrastructure is not the core focus of this project.
 
 4. **Multi-language support**: ParcelPilot likely serves customers in multiple Indian
    languages. Claude handles multilingual queries natively, but the source documents
@@ -101,7 +101,7 @@ retrieval weight. After N flags, quarantine the chunk and alert an admin.
    through the full Claude ReAct loop is expensive. A fast classifier (e.g., a small
    fine-tuned model) that identifies simple queries (order status, balance check) and
    handles them with a direct DB lookup — bypassing the LLM entirely — would cut
-   latency and cost by 60–70%. Not worth the complexity for an assessment corpus of
+   latency and cost by 60–70%. Not worth the complexity for a corpus of
    12 tickets and 10 orders.
 
 ---

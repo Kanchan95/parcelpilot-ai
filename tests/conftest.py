@@ -30,7 +30,7 @@ def pytest_configure(config):
 def _run_setup(app_config):
     from ingestion.excel_ingester import ingest_excel
     ingest_excel()
-    print("[conftest] DB ready (loaded from ParcelPilot_Assessment_Data.xlsx).")
+    print("[conftest] DB ready (loaded from ParcelPilot_Data.xlsx).")
 
 
 @pytest.fixture(scope="session", autouse=True)

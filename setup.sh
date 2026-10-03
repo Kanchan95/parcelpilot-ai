@@ -44,8 +44,8 @@ else
   echo "✓ .env exists"
 fi
 
-# 5. Ingest Excel → SQLite (loads the real assessment data pack)
-echo "→ Loading assessment data into SQLite..."
+# 5. Ingest Excel → SQLite (loads the data pack)
+echo "→ Loading data into SQLite..."
 $PYTHON -m ingestion.excel_ingester
 
 # 6. Ingest documents → ChromaDB

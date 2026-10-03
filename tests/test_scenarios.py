@@ -1,10 +1,10 @@
 """
-Regression tests covering the primary assessment demo scenarios.
+Regression tests covering the primary demo scenarios.
 
 These tests are deterministic and offline — they verify tool-layer behavior
-against the real assessment data without calling the Groq API.
+against the real data without calling the Groq API.
 
-Run: pytest tests/test_assessment_scenarios.py -v
+Run: pytest tests/test_scenarios.py -v
 """
 
 import sys
@@ -29,7 +29,7 @@ def _skip_if_no_chroma(request):
 
 class TestNorthstarCancellationScenario:
     """
-    Assessment scenario: 'Can Northstar cancel ORD-1001 without a cancellation fee?'
+    Scenario: 'Can Northstar cancel ORD-1001 without a cancellation fee?'
 
     Correct answer: YES.
     Northstar Enterprise Agreement waives all fees for any BOOKED shipment
@@ -103,7 +103,7 @@ class TestNorthstarCancellationScenario:
 
 class TestLumenWorksServiceCreditScenario:
     """
-    Assessment scenario: 'Is ORD-2002 eligible for a service credit?'
+    Scenario: 'Is ORD-2002 eligible for a service credit?'
 
     Correct answer: YES, INR 300 fixed credit.
     LumenWorks agreement: >4h past window end, carrier fault → INR 300.
@@ -147,7 +147,7 @@ class TestLumenWorksServiceCreditScenario:
 # ── C. Snapshot time ──────────────────────────────────────────────────────────
 
 class TestSnapshotTime:
-    """The snapshot time from the assessment Excel must be available at runtime."""
+    """The snapshot time from the Excel data must be available at runtime."""
 
     def test_snapshot_time_is_not_default_fallback(self):
         import config
@@ -156,12 +156,12 @@ class TestSnapshotTime:
             "Snapshot time is the default fallback — run python -m ingestion.excel_ingester"
         )
 
-    def test_snapshot_time_matches_assessment_excel(self):
+    def test_snapshot_time_matches_excel(self):
         import config
         snap = config.get_snapshot_time()
-        # The assessment Excel README sheet specifies 2026-08-16 11:00
-        assert "2026-08-16" in snap, f"Snapshot time {snap!r} does not match assessment date 2026-08-16"
-        assert "11:00" in snap, f"Snapshot time {snap!r} does not match assessment time 11:00"
+        # The Excel README sheet specifies 2026-08-16 11:00
+        assert "2026-08-16" in snap, f"Snapshot time {snap!r} does not match snapshot date 2026-08-16"
+        assert "11:00" in snap, f"Snapshot time {snap!r} does not match snapshot time 11:00"
 
     def test_snapshot_file_exists(self):
         import config
@@ -201,7 +201,7 @@ class TestProactiveIssueDetection:
             assert key in result, f"Missing key {key!r} from proactive report"
 
     def test_proactive_report_detects_stale_resolutions(self):
-        """TKT-450 and/or TKT-451 must appear as stale resolutions in the assessment data."""
+        """TKT-450 and/or TKT-451 must appear as stale resolutions in the data."""
         result = structured_lookup.lookup("proactive_report", {}, "INTERNAL", True)
         # stale_resolutions is a dict with a nested list keyed "stale_resolutions"
         stale_data = result["stale_resolutions"]
@@ -212,10 +212,10 @@ class TestProactiveIssueDetection:
         )
 
     def test_proactive_report_detects_missed_pickups(self):
-        """ORD-2002 has a missed pickup window at assessment snapshot time."""
+        """ORD-2002 has a missed pickup window at snapshot time."""
         result = structured_lookup.lookup("proactive_report", {}, "INTERNAL", True)
         assert len(result["missed_pickups"]) >= 1, (
-            "Expected at least one missed pickup in the assessment data"
+            "Expected at least one missed pickup in the data"
         )
 
     def test_proactive_report_summary_is_non_empty(self):
@@ -227,7 +227,7 @@ class TestProactiveIssueDetection:
 # ── F. Conflict detection ─────────────────────────────────────────────────────
 
 class TestConflictDetection:
-    """Verify conflict metadata structure for the assessment documents."""
+    """Verify conflict metadata structure for the source documents."""
 
     @pytest.mark.chroma
     def test_agreement_override_conflict_has_required_fields(self):
