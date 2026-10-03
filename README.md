@@ -1,6 +1,5 @@
 # ParcelPilot AI Support System
 
-> **CalQuity — AI Engineer Assessment**
 > FastAPI · React/Vite · Groq LLM · ChromaDB · SQLite
 
 ---
@@ -122,7 +121,7 @@ parcelpilot-ai/
 │
 └── tests/
     ├── conftest.py                      # Test DB isolation fixture
-    ├── test_assessment_scenarios.py     # Primary scenario regression tests (51 total)
+    ├── test_assessment_scenarios.py     # Scenario regression tests
     ├── test_access_control.py           # Cross-account blocking, scoped queries
     └── test_tools.py                    # Tool unit tests + trust hierarchy
 ```
@@ -184,8 +183,10 @@ cd web && npm run dev
 
 ```bash
 pytest tests/ -v
-# Expected: 51 passed
 ```
+
+The suite has 51 tests. Document-search tests need the ChromaDB index from the
+setup step and are skipped if it is missing.
 
 Tests use a session-scoped temp copy of the database — the real `parcelpilot.db` is never mutated.
 
@@ -382,15 +383,19 @@ GET   /api/health                                            → { status, model
 
 ---
 
-## Assessment Deliverables
+## Limitations & next steps
 
-| Deliverable | Status |
-|---|---|
-| Public repository with setup instructions | ✅ [github.com/Kanchan95/parcelpilot-ai](https://github.com/Kanchan95/parcelpilot-ai) |
-| Hosted application | ✅ [parcelpilot-ai-mdbx.onrender.com](https://parcelpilot-ai-mdbx.onrender.com) |
-| 5-minute demo video | ✅ [youtu.be/RoPsUHLMizs](https://youtu.be/RoPsUHLMizs) |
-| Architecture note | ✅ [`ARCHITECTURE.md`](ARCHITECTURE.md) |
-| High-Level Design | ✅ [`docs/HLD.md`](docs/HLD.md) |
-| Low-Level Design | ✅ [`docs/LLD.md`](docs/LLD.md) |
-| Product note | ✅ [`PRODUCT_NOTE.md`](PRODUCT_NOTE.md) |
-| AI tool usage disclosure | ✅ [`AI_TOOL_DISCLOSURE.md`](AI_TOOL_DISCLOSURE.md) |
+- **Dense-only retrieval** — document search uses `all-MiniLM-L6-v2` embeddings only; there is no keyword/BM25 or hybrid retrieval.
+- **Hand-set authority weights** — the trust-hierarchy weights in `config.py` (`AUTHORITY_WEIGHTS`) are fixed by hand, not tuned or evaluated.
+- **No real authentication** — login picks an account ID from `DEMO_ACCOUNTS`; there are no passwords or tokens.
+- **SQLite** — data lives in a single local SQLite file; there is no separate database server.
+- **No tracing** — only standard Python logging; LLM calls and tool steps are not traced.
+
+---
+
+## Documentation
+
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — architecture decisions and trade-offs
+- [`docs/HLD.md`](docs/HLD.md) — high-level design
+- [`docs/LLD.md`](docs/LLD.md) — low-level design
+- [`PRODUCT_NOTE.md`](PRODUCT_NOTE.md) — product notes
