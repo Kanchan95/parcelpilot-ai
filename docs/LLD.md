@@ -182,7 +182,7 @@ Phase 2 — confirm_action(action_id) called by /api/confirm after user clicks C
 ## 3. Database Schema
 
 ```sql
--- parcelpilot.db (populated from ParcelPilot_Assessment_Data.xlsx)
+-- parcelpilot.db (populated from ParcelPilot_Data.xlsx)
 
 CREATE TABLE accounts (
     account_id      TEXT PRIMARY KEY,          -- 'ACCT-001', 'ACCT-002', ...
@@ -241,7 +241,7 @@ CREATE TABLE actions_log (
 - `tickets` has no `priority`, `sla_breach`, or `resolution` columns — SLA breach
   detection is computed at query time by the issue detector, not stored as a flag.
 - `orders` has no `estimated_delivery`, `origin`, `destination`, or `tracking_number`.
-  The assessment data uses pickup-window logistics, not delivery-tracking logistics.
+  The data uses pickup-window logistics, not delivery-tracking logistics.
 - `historical_resolution` in `tickets` is always returned with a disclaimer that
   it may not reflect current policy (relevant for TKT-450 and TKT-451).
 
@@ -271,7 +271,7 @@ CREATE TABLE actions_log (
 - `"ACCT-001"` — only retrieved when session is ACCT-001 or INTERNAL
 - `"ACCT-002"` — only retrieved when session is ACCT-002 or INTERNAL
 
-**Note:** With the real assessment PDFs (99–207 words each), each document produces
+**Note:** With the source PDFs (99–207 words each), each document produces
 exactly 1 chunk at the 500-word chunk size. Total collection size: 6 chunks.
 
 ---
